@@ -1,5 +1,5 @@
 # Support for addressable LED visual effects
-# using neonp.pixel and dotstar LEDs
+# using neopixel and dotstar LEDs
 #
 # Copyright (C) 2020  Paul McGowan <mental405@gmail.com>
 # co-authored by Julian Schill <j.schill@web.de>
@@ -20,40 +20,46 @@ COLORS = 4
 # from a one dimensional list
 ######################################################################
 
-class colorArray(list):
-    def __init__(self, num_colors, kwargs):
-        self.n=num_colors
-        super(colorArray,self).__init__(kwargs)
-        
-    def __getitem__(self, a):
-        if isinstance(a, int):
-            return super(colorArray, self).__getitem__(
-                            slice(a*self.n, a*self.n+self.n))
-        if isinstance(a, slice):
-                start = a.start*self.n if a.start != None else None
-                stop = a.stop*self.n if a.stop != None else None
-                return colorArray(self.n,
-                        super(colorArray, self).__getitem__(
-                            slice(start, stop, a.step)))
-    def __getslice__(self, a, b):
-        return self.__getitem__(slice(a,b))
-    def __setitem__(self, a, v):
-        if isinstance(a, int):
-            for i in range(self.n):
-                super(colorArray, self).__setitem__(a*self.n + i, v[i])
-    def __len__(self):
-        return super(colorArray, self).__len__() // self.n
+class colorArray(np.ndarray):
+    def __new__(cls, num_colors, array):
+        obj = np.asarray(array).view(cls)
+        obj.num_colors = num_colors
+        return obj
+
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            start = key * self.num_colors
+            return super().__getitem__(slice(start, start + self.num_colors))
+        elif isinstance(key, slice):
+            start = key.start * self.num_colors if key.start is not None else None
+            stop = key.stop * self.num_colors if key.stop is not None else None
+            return colorArray(self.num_colors, super().__getitem__(slice(start, stop, key.step)))
+        else:
+            raise TypeError("Invalid argument type.")
+
+    def __setitem__(self, key, value):
+        if isinstance(key, int):
+            start = key * self.num_colors
+            stop = start + self.num_colors
+            super().__setitem__(slice(start, stop), value)
+        else:
+            raise TypeError("Invalid argument type.")
+
     def reverse(self):
-        self.__init__(self.n, [c for cl in range(len(self)-1,-1, -1)
-                        for c in self[cl]])
+        reversed_array = self[::-1]
+        return colorArray(self.num_colors, reversed_array)
+
     def shift(self, shift=1, direction=True):
-        if direction:
-            shift *= -1
-        self.__init__(self.n, self[shift:] + self[:shift])
-    def padLeft(self, v, a):
-        self.__init__(self.n, v * a + self)
-    def padRight(self, v, a):
-        self += v * a
+        shift = -shift if direction else shift
+        return np.roll(self, shift * self.num_colors)
+
+    def pad_left(self, value, count):
+        padding = np.full((count * self.num_colors,), value)
+        return colorArray(self.num_colors, np.concatenate((padding, self)))
+
+    def pad_right(self, value, count):
+        padding = np.full((count * self.num_colors,), value)
+        return colorArray(self.num_colors, np.concatenate((self, padding)))
 
 ######################################################################
 # LED Effect handler
@@ -192,7 +198,7 @@ class ledFrameHandler:
         return eventtime + 1
 
     def _getColorData(self, colors, fade):
-        clamp = (lambda x : 0.0 if x < 0.0 else 1.0 if x > 1.0 else x)
+        clamp = np.clip
         colors = [x*clamp(fade) for x in colors]
         colors=colors + [0.0] * (4 - len(colors))
         colors=colors[:4]
@@ -345,8 +351,8 @@ class ledEffect:
         self.autoStart    = config.getboolean('autostart', False)
         self.runOnShutown = config.getboolean('run_on_error', False)
         self.heater       = config.get('heater', None)
-        self.analogPin    = config.get('analog_np.pin', None)
-        self.buttonPins   = config.getlist('button_np.pins', None)
+        self.analogPin    = config.get('analog_pin', None)
+        self.buttonPins   = config.getlist('button_pins', None)
         self.stepper      = config.get('stepper', None)
         self.recalculate  = config.get('recalculate', False)
         self.endstops     = [x.strip() for x in config.get('endstops','').split(',')]
@@ -361,8 +367,8 @@ class ledEffect:
                                          desc=self.cmd_SET_LED_help)
 
         if self.analogPin:
-            pnp.pins = self.printer.lookup_object('np.pins')
-            self.mcu_adc = pnp.pins.setup_np.pin('adc', self.analogPin)
+            ppins = self.printer.lookup_object('pins')
+            self.mcu_adc = ppins.setup_pin('adc', self.analogPin)
             self.mcu_adc.setup_adc_sample(ANALOG_SAMPLE_TIME, ANALOG_SAMPLE_COUNT)
             self.mcu_adc.setup_adc_callback(ANALOG_REPORT_TIME, self.adcCallback)
             query_adc = self.printer.load_object(self.config, 'query_adc')
@@ -383,7 +389,7 @@ class ledEffect:
             self.nextEventTime = self.handler.reactor.NEVER
         self.printer.register_event_handler('klippy:shutdown', 
                                     self._handle_shutdown)
-        #map each LED from the chains to the "np.pixels" in the effect frame
+        #map each LED from the chains to the "pixels" in the effect frame
         for chain in self.configChains:
             chainName, ledIndices = self.handler.parse_chain(chain)
             if chainName is not None:
@@ -591,7 +597,7 @@ class ledEffect:
             for s in range(0, int((rate<1)+rate)):
                 frame.append(1.0)
                 for x in range(2, int(p / rate)):
-                    b = np.exp(1)**-(x/r)
+                    b = exp(1)**-(x/r)
                     if b>.004:
                         frame.append(b)
             return frame
@@ -655,11 +661,11 @@ class ledEffect:
 
             p = (1 / self.frameRate) * (self.effectRate * 0.5)
             o = int(p)
-            f = 2 * np.pi
+            f = 2 * pi
 
             for x in range(0, int(p)):
                 if x < p:
-                    v  = (np.exp(-np.cos((f / p) * (x+o)))-0.367879) / 2.35040238
+                    v  = (exp(-cos((f / p) * (x+o)))-0.367879) / 2.35040238
                 else:
                     v = 0
 
@@ -1078,7 +1084,7 @@ class ledEffect:
             return self.thisFrame[s]
 
             
-    #Responds to analog np.pin voltage
+    #Responds to analog pin voltage
     class layerAnalogPin(_layerBase):
         def __init__(self,  **kwargs):
             super(ledEffect.layerAnalogPin, self).__init__(**kwargs)

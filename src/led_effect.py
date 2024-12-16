@@ -1,12 +1,12 @@
 # Support for addressable LED visual effects
-# using neopixel and dotstar LEDs
+# using neonp.pixel and dotstar LEDs
 #
 # Copyright (C) 2020  Paul McGowan <mental405@gmail.com>
 # co-authored by Julian Schill <j.schill@web.de>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
-from math import cos, exp, pi
+import numpy as np
 from random import randint
 
 ANALOG_SAMPLE_TIME  = 0.001
@@ -345,8 +345,8 @@ class ledEffect:
         self.autoStart    = config.getboolean('autostart', False)
         self.runOnShutown = config.getboolean('run_on_error', False)
         self.heater       = config.get('heater', None)
-        self.analogPin    = config.get('analog_pin', None)
-        self.buttonPins   = config.getlist('button_pins', None)
+        self.analogPin    = config.get('analog_np.pin', None)
+        self.buttonPins   = config.getlist('button_np.pins', None)
         self.stepper      = config.get('stepper', None)
         self.recalculate  = config.get('recalculate', False)
         self.endstops     = [x.strip() for x in config.get('endstops','').split(',')]
@@ -361,8 +361,8 @@ class ledEffect:
                                          desc=self.cmd_SET_LED_help)
 
         if self.analogPin:
-            ppins = self.printer.lookup_object('pins')
-            self.mcu_adc = ppins.setup_pin('adc', self.analogPin)
+            pnp.pins = self.printer.lookup_object('np.pins')
+            self.mcu_adc = pnp.pins.setup_np.pin('adc', self.analogPin)
             self.mcu_adc.setup_adc_sample(ANALOG_SAMPLE_TIME, ANALOG_SAMPLE_COUNT)
             self.mcu_adc.setup_adc_callback(ANALOG_REPORT_TIME, self.adcCallback)
             query_adc = self.printer.load_object(self.config, 'query_adc')
@@ -383,7 +383,7 @@ class ledEffect:
             self.nextEventTime = self.handler.reactor.NEVER
         self.printer.register_event_handler('klippy:shutdown', 
                                     self._handle_shutdown)
-        #map each LED from the chains to the "pixels" in the effect frame
+        #map each LED from the chains to the "np.pixels" in the effect frame
         for chain in self.configChains:
             chainName, ledIndices = self.handler.parse_chain(chain)
             if chainName is not None:
@@ -591,7 +591,7 @@ class ledEffect:
             for s in range(0, int((rate<1)+rate)):
                 frame.append(1.0)
                 for x in range(2, int(p / rate)):
-                    b = exp(1)**-(x/r)
+                    b = np.exp(1)**-(x/r)
                     if b>.004:
                         frame.append(b)
             return frame
@@ -655,11 +655,11 @@ class ledEffect:
 
             p = (1 / self.frameRate) * (self.effectRate * 0.5)
             o = int(p)
-            f = 2 * pi
+            f = 2 * np.pi
 
             for x in range(0, int(p)):
                 if x < p:
-                    v  = (exp(-cos((f / p) * (x+o)))-0.367879) / 2.35040238
+                    v  = (np.exp(-np.cos((f / p) * (x+o)))-0.367879) / 2.35040238
                 else:
                     v = 0
 
@@ -1078,7 +1078,7 @@ class ledEffect:
             return self.thisFrame[s]
 
             
-    #Responds to analog pin voltage
+    #Responds to analog np.pin voltage
     class layerAnalogPin(_layerBase):
         def __init__(self,  **kwargs):
             super(ledEffect.layerAnalogPin, self).__init__(**kwargs)

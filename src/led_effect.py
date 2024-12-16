@@ -597,7 +597,7 @@ class ledEffect:
             for s in range(0, int((rate<1)+rate)):
                 frame.append(1.0)
                 for x in range(2, int(p / rate)):
-                    b = exp(1)**-(x/r)
+                    b = np.exp(1)**-(x/r)
                     if b>.004:
                         frame.append(b)
             return frame
@@ -665,7 +665,7 @@ class ledEffect:
 
             for x in range(0, int(p)):
                 if x < p:
-                    v  = (exp(-cos((f / p) * (x+o)))-0.367879) / 2.35040238
+                    v  = (np.exp(-np.cos((f / p) * (x+o)))-0.367879) / 2.35040238
                 else:
                     v = 0
 
